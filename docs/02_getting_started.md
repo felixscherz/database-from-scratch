@@ -42,4 +42,4 @@ def create_table(name: str, schema: Schema, primary_key: str | Sequence[str]):
 
 ```
 
-## How are we going to deal with composite primary keys?
+Composite primary keys are implemented by concatenating the key components into a single new key.
