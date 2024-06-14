@@ -15,20 +15,20 @@
 # internal node
 0 | type of page -> internal
 1 | number of items
-3 | free space
-4 | number of items
-5 | mapping from key to page number for the next node
+3 | amount of free space left
+4 | mapping from key to page number for the next node
+5 | <free space>
 ```
 
 ```
 # leaf page
 0 | type of page -> leaf
 1 | number of items
-3 | free space
-5 | offsets to different parts
-6 | mapping from key to page internal offset
-7 | free space
-8 | items in insertion order
+2 | offsets to different parts
+3 | amount of free space left
+4 | mapping from key to page internal offset
+5 | <free space>
+6 | items in insertion order
 
 ```
 
