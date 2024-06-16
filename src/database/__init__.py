@@ -40,6 +40,7 @@ def read_with(reader: BinaryIO, struct: struct.Struct):
 
 class TableMetadata(NamedTuple):
     schema: dict[str, Any]
+    key_sequence: tuple[str, ...]
 
 
 class Database:
@@ -47,6 +48,9 @@ class Database:
         self.b = BytesIO()
 
     def create_table(self, name: str, schema: dict[str, type[Datatype]], primary_key: str | Sequence[str]):
+        # i want a dictionary of name to index
+        key_sequence = (primary_key,) if isinstance(primary_key, str) else tuple(primary_key)
+        key_mapping = {name: i for i, name in enumerate(key_sequence)}
         b = self.b
         b.write(FILE_HEADER_MAGIC.pack(*MAGIC_BYTES))
         b.write(VERSION_BYTES_STRUCT.pack(*VERSION_BYTES))
@@ -58,7 +62,9 @@ class Database:
             b.write(struct.pack("<b", len(name)))
             b.write(struct.pack(f"<{len(name)}s", name.encode()))
             # this could be changed to encode the key position 0,1,2,3 to allow for composite keys
-            b.write(struct.pack("<?", name == primary_key))
+            b.write(struct.pack("<?", name in key_sequence))
+            if name in key_sequence:
+                b.write(struct.pack("<B", key_mapping[name]))
             b.write(DATATYPE_STRUCT.pack(DATATYPE_TO_BYTE[datatype]))
 
         # start with a leaf page for an empty table
@@ -84,6 +90,9 @@ class Database:
     def schema(self, name: str):
         return self._parse_meta_header(self.b).schema
 
+    def primary_key(self, name: str):
+        return self._parse_meta_header(self.b).key_sequence
+
     def _parse_meta_header(self, reader: BinaryIO):
         reader.seek(0)
         if not read_with(reader, FILE_HEADER_MAGIC) == MAGIC_BYTES:
@@ -93,10 +102,17 @@ class Database:
         number_of_pages = read_with(reader, NUMBER_OF_PAGES_STRUCT)
         number_of_columns = read_with(reader, NUMBER_OF_COLUMNS_STRUCT)
         schema = {}
+        key_mapping = {}
         for _ in range(number_of_columns[0]):
             name_length = read_with(reader, struct.Struct("<b"))
             name = read_with(reader, struct.Struct(f"<{name_length[0]}s"))
             is_primary_key = read_with(reader, struct.Struct("<?"))
+            if is_primary_key[0]:
+                key_index = read_with(reader, struct.Struct("<B"))
+                key_mapping[key_index[0]] = name[0].decode()
             datatype = read_with(reader, DATATYPE_STRUCT)
             schema[name[0].decode()] = BYTE_TO_DATATYPE[datatype[0]]
-        return TableMetadata(schema)
+        print(key_mapping)
+        key_sequence = tuple(key_mapping[i] for i in range(len(key_mapping)))
+
+        return TableMetadata(schema, key_sequence)
