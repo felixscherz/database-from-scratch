@@ -6,6 +6,8 @@ from typing import NamedTuple
 from typing import Sequence
 from typing import TypeAlias
 
+from database.nodes import MetaHeader
+
 Datatype: TypeAlias = str | int | float | bytes
 
 MAGIC_BYTES = tuple(c.encode() for c in "magic")
@@ -55,22 +57,18 @@ class Database:
     def create_table(self, name: str, schema: dict[str, type[Datatype]], primary_key: str | Sequence[str]):
         # i want a dictionary of name to index
         key_sequence = (primary_key,) if isinstance(primary_key, str) else tuple(primary_key)
-        key_mapping = {name: i for i, name in enumerate(key_sequence)}
+        meta_header = MetaHeader(
+            magic=MAGIC_BYTES,
+            version=VERSION_BYTES,
+            bytes_per_page=BYTES_PER_PAGE,
+            number_of_pages=1,
+            schema=schema,
+            primary_key=key_sequence
+        )
+        meta_header.write(self.b)
+
+
         b = self.b
-        b.write(FILE_HEADER_MAGIC.pack(*MAGIC_BYTES))
-        b.write(VERSION_BYTES_STRUCT.pack(*VERSION_BYTES))
-        b.write(BYTES_PER_PAGE_STRUCT.pack(BYTES_PER_PAGE))
-        b.write(NUMBER_OF_PAGES_STRUCT.pack(1))
-        b.write(NUMBER_OF_COLUMNS_STRUCT.pack(len(schema)))
-        for name, datatype in schema.items():
-            # <length-of-name><name><is-primary-key><datatype>
-            b.write(struct.pack("<b", len(name)))
-            b.write(struct.pack(f"<{len(name)}s", name.encode()))
-            # this could be changed to encode the key position 0,1,2,3 to allow for composite keys
-            b.write(struct.pack("<?", name in key_sequence))
-            if name in key_sequence:
-                b.write(struct.pack("<B", key_mapping[name]))
-            b.write(DATATYPE_STRUCT.pack(DATATYPE_TO_BYTE[datatype]))
 
         # start with a leaf page for an empty table
         b.write(TYPE_OF_PAGE_STRUCT.pack(LEAF_NODE))
@@ -89,11 +87,10 @@ class Database:
         for i, datatype in enumerate(schema.values()):
             if not isinstance(item[i], datatype):
                 raise SchemaError(item[i], i, datatype)
-        # start at root node 
+        # start at root node
         # if root node is empty, add the value
         # if root node has values but is not full -> add item
         # if root node is more than 75% full
-
 
     def read(self, key): ...
 
