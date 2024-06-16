@@ -34,12 +34,17 @@ class DecodeError(Exception):
         super().__init__(f"Invalid bytes encountered at {offset=}")
 
 
+class SchemaError(Exception):
+    def __init__(self, value: Any, pos: int, expected: type):
+        super().__init__(f"Value {value!r} at position {pos} does not match the schema. Expected {expected!r}")
+
+
 def read_with(reader: BinaryIO, struct: struct.Struct):
     return struct.unpack(reader.read(struct.size))
 
 
 class TableMetadata(NamedTuple):
-    schema: dict[str, Any]
+    schema: dict[str, type[Datatype]]
     key_sequence: tuple[str, ...]
 
 
@@ -77,10 +82,18 @@ class Database:
         b.write(struct.pack("<I", b.tell() + 2 * struct.calcsize("<I")))  # point to start of free space
         b.write(struct.pack("<I", BYTES_PER_PAGE))  # point to first item in page
 
-    def insert(self, item):
+    def insert(self, table_name: str, item: tuple[Datatype, ...]):
         # when calling this, we might know nothing about the table, so we first need to parse the metaheader for
         # information on the schema and where to begin traversing the b+ tree
-        ...
+        schema = self.schema(table_name)
+        for i, datatype in enumerate(schema.values()):
+            if not isinstance(item[i], datatype):
+                raise SchemaError(item[i], i, datatype)
+        # start at root node 
+        # if root node is empty, add the value
+        # if root node has values but is not full -> add item
+        # if root node is more than 75% full
+
 
     def read(self, key): ...
 
@@ -109,7 +122,6 @@ class Database:
                 key_mapping[key_index[0]] = name[0].decode()
             datatype = read_with(reader, DATATYPE_STRUCT)
             schema[name[0].decode()] = BYTE_TO_DATATYPE[datatype[0]]
-        print(key_mapping)
         key_sequence = tuple(key_mapping[i] for i in range(len(key_mapping)))
 
         return TableMetadata(schema, key_sequence)
