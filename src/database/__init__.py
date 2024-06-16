@@ -102,23 +102,6 @@ class Database:
 
     def _parse_meta_header(self, reader: BinaryIO):
         reader.seek(0)
-        if not read_with(reader, FILE_HEADER_MAGIC) == MAGIC_BYTES:
-            raise DecodeError(0)
-        version = read_with(reader, VERSION_BYTES_STRUCT)
-        bytes_per_page = read_with(reader, BYTES_PER_PAGE_STRUCT)
-        number_of_pages = read_with(reader, NUMBER_OF_PAGES_STRUCT)
-        number_of_columns = read_with(reader, NUMBER_OF_COLUMNS_STRUCT)
-        schema = {}
-        key_mapping = {}
-        for _ in range(number_of_columns[0]):
-            name_length = read_with(reader, struct.Struct("<b"))
-            name = read_with(reader, struct.Struct(f"<{name_length[0]}s"))
-            is_primary_key = read_with(reader, struct.Struct("<?"))
-            if is_primary_key[0]:
-                key_index = read_with(reader, struct.Struct("<B"))
-                key_mapping[key_index[0]] = name[0].decode()
-            datatype = read_with(reader, DATATYPE_STRUCT)
-            schema[name[0].decode()] = BYTE_TO_DATATYPE[datatype[0]]
-        key_sequence = tuple(key_mapping[i] for i in range(len(key_mapping)))
+        meta_header = MetaHeader.read(reader)
 
-        return TableMetadata(schema, key_sequence)
+        return TableMetadata(meta_header.schema, meta_header.primary_key)

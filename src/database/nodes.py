@@ -1,8 +1,16 @@
 from __future__ import annotations
+
 import struct
 from dataclasses import dataclass
 from typing import BinaryIO
+
 from database.types import Datatype
+
+
+class DecodeError(Exception):
+    def __init__(self, offset: int):
+        super().__init__(f"Invalid bytes encountered at {offset=}")
+
 
 MAGIC_BYTES = tuple(c.encode() for c in "magic")
 VERSION_BYTES = (0, 0, 1)
@@ -23,6 +31,11 @@ BYTE_TO_DATATYPE = {0: int, 1: float, 2: str, 3: bytes}
 TYPE_OF_PAGE_STRUCT = struct.Struct("<b")
 INTERNAL_NODE = 0
 LEAF_NODE = 1
+
+
+def read_with(reader: BinaryIO, struct: struct.Struct):
+    return struct.unpack(reader.read(struct.size))
+
 
 @dataclass
 class MetaHeader:
@@ -52,10 +65,34 @@ class MetaHeader:
             writer.write(DATATYPE_STRUCT.pack(DATATYPE_TO_BYTE[datatype]))
         return writer.tell() - start
 
-
-    def read(self, reader: BinaryIO) -> MetaHeader:
-        ...
-
+    @classmethod
+    def read(cls, reader: BinaryIO) -> MetaHeader:
+        if not read_with(reader, FILE_HEADER_MAGIC) == MAGIC_BYTES:
+            raise DecodeError(0)
+        version = read_with(reader, VERSION_BYTES_STRUCT)
+        bytes_per_page = read_with(reader, BYTES_PER_PAGE_STRUCT)[0]
+        number_of_pages = read_with(reader, NUMBER_OF_PAGES_STRUCT)[0]
+        number_of_columns = read_with(reader, NUMBER_OF_COLUMNS_STRUCT)[0]
+        schema = {}
+        key_mapping = {}
+        for _ in range(number_of_columns):
+            name_length = read_with(reader, struct.Struct("<b"))
+            name = read_with(reader, struct.Struct(f"<{name_length[0]}s"))
+            is_primary_key = read_with(reader, struct.Struct("<?"))
+            if is_primary_key[0]:
+                key_index = read_with(reader, struct.Struct("<B"))
+                key_mapping[key_index[0]] = name[0].decode()
+            datatype = read_with(reader, DATATYPE_STRUCT)
+            schema[name[0].decode()] = BYTE_TO_DATATYPE[datatype[0]]
+        key_sequence = tuple(key_mapping[i] for i in range(len(key_mapping)))
+        return cls(
+            magic=MAGIC_BYTES,
+            version=version,
+            bytes_per_page=bytes_per_page,
+            number_of_pages=number_of_pages,
+            schema=schema,
+            primary_key=key_sequence,
+        )
 
 
 class Header: ...
