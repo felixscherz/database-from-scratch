@@ -84,9 +84,6 @@ class Database:
 
     def read(self, key): ...
 
-    def table_info(self, name: str):
-        return self._parse_meta_header(self.b)
-
     def schema(self, name: str):
         return self._parse_meta_header(self.b).schema
 
