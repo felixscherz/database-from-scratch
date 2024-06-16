@@ -27,3 +27,11 @@ def test_buffer():
     a = struct.pack("<b", 3)
     out = struct.unpack("<b", a)
     print(out)
+
+def test_read_schema_for_existing_table():
+    db = Database()
+    schema = {"id": int, "greeting": str}
+    db.create_table("greetings", schema=schema, primary_key="id")
+    metadata = db.table_info("greetings")
+    assert metadata.schema == schema
+

@@ -1,6 +1,7 @@
 import struct
 from io import BytesIO
-from typing import BinaryIO
+from typing import Any, BinaryIO
+from typing import NamedTuple
 
 MAGIC_BYTES = tuple(c.encode() for c in "magic")
 VERSION_BYTES = (0, 0, 1)
@@ -16,11 +17,12 @@ NUMBER_OF_COLUMNS_STRUCT = struct.Struct("<b")
 DATATYPE_STRUCT = struct.Struct("<b")
 
 DATATYPE_TO_BYTE = {int: 0, float: 1, str: 2, bytes: 3}
-BYTE_TO_DATATYPE = {0: int,  1:float, 2:str, 3:bytes}
+BYTE_TO_DATATYPE = {0: int, 1: float, 2: str, 3: bytes}
 
 TYPE_OF_PAGE_STRUCT = struct.Struct("<b")
 INTERNAL_NODE = 0
 LEAF_NODE = 1
+
 
 class DecodeError(Exception):
     def __init__(self, offset: int):
@@ -29,6 +31,10 @@ class DecodeError(Exception):
 
 def read_with(reader: BinaryIO, struct: struct.Struct):
     return struct.unpack(reader.read(struct.size))
+
+
+class TableMetadata(NamedTuple):
+    schema: dict[str, Any]
 
 
 class Database:
@@ -68,7 +74,7 @@ class Database:
     def read(self, key): ...
 
     def table_info(self, name: str):
-        self._parse_meta_header(self.b)
+        return self._parse_meta_header(self.b)
 
     def _parse_meta_header(self, reader: BinaryIO):
         reader.seek(0)
@@ -85,14 +91,4 @@ class Database:
             is_primary_key = read_with(reader, struct.Struct("<?"))
             datatype = read_with(reader, DATATYPE_STRUCT)
             schema[name[0].decode()] = BYTE_TO_DATATYPE[datatype[0]]
-            
-        print(version)
-        print(bytes_per_page)
-        print(number_of_pages)
-        print(number_of_columns)
-        print(schema)
-
-
-
-
-
+        return TableMetadata(schema)
