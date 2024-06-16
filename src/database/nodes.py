@@ -2,7 +2,10 @@ from __future__ import annotations
 
 import struct
 from dataclasses import dataclass
+from enum import Enum
+from io import BytesIO
 from typing import BinaryIO
+from typing import Literal
 
 from database.types import Datatype
 
@@ -31,6 +34,11 @@ BYTE_TO_DATATYPE = {0: int, 1: float, 2: str, 3: bytes}
 TYPE_OF_PAGE_STRUCT = struct.Struct("<b")
 INTERNAL_NODE = 0
 LEAF_NODE = 1
+
+
+class NodeType(Enum):
+    INTERNAL = 0
+    LEAF = 1
 
 
 def read_with(reader: BinaryIO, struct: struct.Struct):
@@ -95,10 +103,58 @@ class MetaHeader:
         )
 
 
-class Header: ...
+@dataclass
+class InternalNode:
+    key_mapping: dict[Datatype, int]  # this needs to adapt to support key sequences
+    type: Literal[NodeType.INTERNAL] = NodeType.INTERNAL
+    meta_header: MetaHeader | None = None
 
+    @property
+    def number_of_items(self) -> int:
+        return len(self.key_mapping)
 
-class InternalNode: ...
+    @property
+    def offset_to_end(self) -> int:
+        return BYTES_PER_PAGE
+
+    @property
+    def offset_to_free(self) -> int:
+        return sum((TYPE_OF_PAGE_STRUCT.size, struct.Struct("<I").size * 4, len(self._encode_key_mapping())))
+
+    @property
+    def free_space(self) -> int:
+        ...
+
+    def write(self, writer: BinaryIO) -> int:
+        start = writer.tell()
+        writer.write(TYPE_OF_PAGE_STRUCT.pack(self.type))
+        writer.write(struct.pack("<I", self.number_of_items))  # number of items on the page
+        writer.write(
+            struct.pack("<I", self.free_space)
+        )  # free space left on the page after accounting for other headers
+        writer.write(struct.pack("<I", self.offset_to_end))  # point to end of the first page
+        writer.write(struct.pack("<I", self.offset_to_free))  # point to start of free space
+        encoded_key_mapping = self._encode_key_mapping()
+        return writer.tell() - start
+
+    def _encode_key_mapping(self) -> bytes:
+        buffer = BytesIO()
+        for value, offset in self.key_mapping.items():
+            buffer.write(DATATYPE_STRUCT.pack(DATATYPE_TO_BYTE[type(value)]))
+            match type(value):
+                case int():
+                    buffer.write(struct.pack("<i", value))
+                case float():
+                    buffer.write(struct.pack("<f", value))
+                case str(), bytes():
+                    assert isinstance(value, (str, bytes))
+                    buffer.write(struct.pack("<I", len(value)))
+                    buffer.write(struct.pack(f"<{len(value)}s", value))
+            buffer.write(struct.pack("<I", offset))
+        return buffer.getvalue()
+
+    @classmethod
+    def read(cls, reader: BinaryIO) -> InternalNode: ...
 
 
 class LeafNode:

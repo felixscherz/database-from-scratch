@@ -6,6 +6,7 @@ from typing import NamedTuple
 from typing import Sequence
 from typing import TypeAlias
 
+from database.nodes import InternalNode
 from database.nodes import MetaHeader
 
 Datatype: TypeAlias = str | int | float | bytes
@@ -63,11 +64,11 @@ class Database:
             bytes_per_page=BYTES_PER_PAGE,
             number_of_pages=1,
             schema=schema,
-            primary_key=key_sequence
+            primary_key=key_sequence,
         )
         meta_header.write(self.b)
 
-
+        root_node = InternalNode(number_of_items=0, free_space=0, offset_to_end=0, offset_to_free=0, key_mapping={})
         b = self.b
 
         # start with a leaf page for an empty table
