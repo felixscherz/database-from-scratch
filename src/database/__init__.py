@@ -1,7 +1,12 @@
 import struct
 from io import BytesIO
-from typing import Any, BinaryIO
+from typing import Any
+from typing import BinaryIO
 from typing import NamedTuple
+from typing import Sequence
+from typing import TypeAlias
+
+Datatype: TypeAlias = str | int | float | bytes
 
 MAGIC_BYTES = tuple(c.encode() for c in "magic")
 VERSION_BYTES = (0, 0, 1)
@@ -41,7 +46,7 @@ class Database:
     def __init__(self):
         self.b = BytesIO()
 
-    def create_table(self, name: str, schema, primary_key):
+    def create_table(self, name: str, schema: dict[str, type[Datatype]], primary_key: str | Sequence[str]):
         b = self.b
         b.write(FILE_HEADER_MAGIC.pack(*MAGIC_BYTES))
         b.write(VERSION_BYTES_STRUCT.pack(*VERSION_BYTES))
@@ -75,6 +80,9 @@ class Database:
 
     def table_info(self, name: str):
         return self._parse_meta_header(self.b)
+
+    def schema(self, name: str):
+        return self._parse_meta_header(self.b).schema
 
     def _parse_meta_header(self, reader: BinaryIO):
         reader.seek(0)

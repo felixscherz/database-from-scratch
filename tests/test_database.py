@@ -32,6 +32,4 @@ def test_read_schema_for_existing_table():
     db = Database()
     schema = {"id": int, "greeting": str}
     db.create_table("greetings", schema=schema, primary_key="id")
-    metadata = db.table_info("greetings")
-    assert metadata.schema == schema
-
+    assert schema == db.table_info("greetings").schema
