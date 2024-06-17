@@ -59,9 +59,6 @@ class Database:
         # i want a dictionary of name to index
         key_sequence = (primary_key,) if isinstance(primary_key, str) else tuple(primary_key)
         meta_header = MetaHeader(
-            magic=MAGIC_BYTES,
-            version=VERSION_BYTES,
-            bytes_per_page=BYTES_PER_PAGE,
             number_of_pages=1,
             schema=schema,
             primary_key=key_sequence,

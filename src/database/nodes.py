@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import struct
 from dataclasses import dataclass
+from dataclasses import field
 from enum import Enum
 from io import BytesIO
 from typing import BinaryIO
@@ -9,6 +10,8 @@ from typing import ClassVar
 from typing import Literal
 
 from database.types import Datatype
+
+__all__ = ["InternalNode", "MetaHeader", "LeafNode"]
 
 
 class DecodeError(Exception):
@@ -48,12 +51,12 @@ def read_with(reader: BinaryIO, struct: struct.Struct):
 
 @dataclass
 class MetaHeader:
-    magic: tuple[bytes, ...]
-    version: tuple[int, int, int]
-    bytes_per_page: int
     number_of_pages: int
     schema: dict[str, type[Datatype]]
     primary_key: tuple[str, ...]
+    magic: tuple[bytes, ...] = field(default=MAGIC_BYTES)
+    version: tuple[int, int, int] = field(default=VERSION_BYTES)
+    bytes_per_page: int = field(default=BYTES_PER_PAGE)
 
     def write(self, writer: BinaryIO) -> int:
         key_mapping = {name: i for i, name in enumerate(self.primary_key)}
@@ -95,13 +98,27 @@ class MetaHeader:
             schema[name[0].decode()] = BYTE_TO_DATATYPE[datatype[0]]
         key_sequence = tuple(key_mapping[i] for i in range(len(key_mapping)))
         return cls(
-            magic=MAGIC_BYTES,
-            version=version,
-            bytes_per_page=bytes_per_page,
             number_of_pages=number_of_pages,
             schema=schema,
             primary_key=key_sequence,
         )
+
+    @property
+    def size(self):
+        total = 0
+        total += FILE_HEADER_MAGIC.size
+        total += VERSION_BYTES_STRUCT.size
+        total += BYTES_PER_PAGE_STRUCT.size
+        total += NUMBER_OF_PAGES_STRUCT.size
+        total += NUMBER_OF_COLUMNS_STRUCT.size
+        for name in self.schema:
+            total += struct.calcsize("<b")
+            total += struct.calcsize(f"<{len(name)}s")
+            total += struct.calcsize("<?")
+            if name in self.primary_key:
+                total += struct.calcsize("<B")
+            total += DATATYPE_STRUCT.size
+        return total
 
 
 @dataclass
@@ -128,6 +145,7 @@ class InternalNode:
     def offset_to_free(self) -> int:
         return sum(
             (
+                self.meta_header.size if self.meta_header else 0,
                 self.type_of_page_struct.size,
                 self.number_of_items_struct.size,
                 self.free_space_struct.size,
@@ -143,7 +161,9 @@ class InternalNode:
 
     def write(self, writer: BinaryIO) -> int:
         start = writer.tell()
-        writer.write(self.type_of_page_struct.pack(self.type))
+        if self.meta_header:
+            self.meta_header.write(writer)
+        writer.write(self.type_of_page_struct.pack(self.type.value))
         writer.write(self.number_of_items_struct.pack(self.number_of_items))  # number of items on the page
         writer.write(
             self.free_space_struct.pack(self.free_space)
@@ -170,7 +190,30 @@ class InternalNode:
         return buffer.getvalue()
 
     @classmethod
-    def read(cls, reader: BinaryIO) -> InternalNode: ...
+    def read(cls, reader: BinaryIO, root=False) -> InternalNode:
+        meta_header = MetaHeader.read(reader) if root else None
+        type_of_page = read_with(reader, cls.type_of_page_struct)[0]
+        assert type_of_page == NodeType.INTERNAL.value
+        number_of_items = read_with(reader, cls.number_of_items_struct)[0]
+        free_space = read_with(reader, cls.free_space_struct)[0]
+        offset_to_end = read_with(reader, cls.offset_to_end_struct)[0]
+        offset_to_free = read_with(reader, cls.offset_to_free_struct)[0]
+        key_mapping = {}
+        for _ in range(number_of_items):
+            datatype = BYTE_TO_DATATYPE[read_with(reader, DATATYPE_STRUCT)[0]]
+            match datatype:
+                case int():
+                    value = read_with(reader, struct.Struct("<i"))[0]
+                case float():
+                    value = read_with(reader, struct.Struct("<f"))[0]
+                case str(), bytes():
+                    size = read_with(reader, struct.Struct("<I"))[0]
+                    value = read_with(reader, struct.Struct(f"<{size}s"))[0]
+                case _:
+                    raise DecodeError(reader.tell())
+            offset = read_with(reader, struct.Struct("<I"))[0]
+            key_mapping[value] = offset
+        return cls(key_mapping=key_mapping, meta_header=meta_header)
 
 
 class LeafNode:
