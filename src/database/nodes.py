@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from enum import Enum
 from io import BytesIO
 from typing import BinaryIO
+from typing import ClassVar
 from typing import Literal
 
 from database.types import Datatype
@@ -108,6 +109,12 @@ class InternalNode:
     key_mapping: dict[Datatype, int]  # this needs to adapt to support key sequences
     type: Literal[NodeType.INTERNAL] = NodeType.INTERNAL
     meta_header: MetaHeader | None = None
+    type_of_page_struct: ClassVar[struct.Struct] = TYPE_OF_PAGE_STRUCT
+    number_of_items_struct: ClassVar[struct.Struct] = struct.Struct("<I")
+    free_space_struct: ClassVar[struct.Struct] = struct.Struct("<I")
+    offset_to_end_struct: ClassVar[struct.Struct] = struct.Struct("<I")
+    offset_to_free_struct: ClassVar[struct.Struct] = struct.Struct("<I")
+    bytes_per_page: ClassVar[int] = BYTES_PER_PAGE
 
     @property
     def number_of_items(self) -> int:
@@ -115,26 +122,35 @@ class InternalNode:
 
     @property
     def offset_to_end(self) -> int:
-        return BYTES_PER_PAGE
+        return self.bytes_per_page
 
     @property
     def offset_to_free(self) -> int:
-        return sum((TYPE_OF_PAGE_STRUCT.size, struct.Struct("<I").size * 4, len(self._encode_key_mapping())))
+        return sum(
+            (
+                self.type_of_page_struct.size,
+                self.number_of_items_struct.size,
+                self.free_space_struct.size,
+                self.offset_to_end_struct.size,
+                self.offset_to_free_struct.size,
+                len(self._encode_key_mapping()),
+            )
+        )
 
     @property
     def free_space(self) -> int:
-        ...
+        return self.bytes_per_page - self.offset_to_free
 
     def write(self, writer: BinaryIO) -> int:
         start = writer.tell()
-        writer.write(TYPE_OF_PAGE_STRUCT.pack(self.type))
-        writer.write(struct.pack("<I", self.number_of_items))  # number of items on the page
+        writer.write(self.type_of_page_struct.pack(self.type))
+        writer.write(self.number_of_items_struct.pack(self.number_of_items))  # number of items on the page
         writer.write(
-            struct.pack("<I", self.free_space)
+            self.free_space_struct.pack(self.free_space)
         )  # free space left on the page after accounting for other headers
-        writer.write(struct.pack("<I", self.offset_to_end))  # point to end of the first page
-        writer.write(struct.pack("<I", self.offset_to_free))  # point to start of free space
-        encoded_key_mapping = self._encode_key_mapping()
+        writer.write(self.offset_to_end_struct.pack(self.offset_to_end))  # point to end of the first page
+        writer.write(self.offset_to_free_struct.pack(self.offset_to_free))  # point to start of free space
+        writer.write(self._encode_key_mapping())
         return writer.tell() - start
 
     def _encode_key_mapping(self) -> bytes:
