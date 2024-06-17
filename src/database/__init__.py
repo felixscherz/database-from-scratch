@@ -68,7 +68,7 @@ class Database:
         )
         meta_header.write(self.b)
 
-        root_node = InternalNode(number_of_items=0, free_space=0, offset_to_end=0, offset_to_free=0, key_mapping={})
+        root_node = InternalNode(key_mapping={})
         b = self.b
 
         # start with a leaf page for an empty table
