@@ -32,9 +32,6 @@ DATATYPE_TO_BYTE = {int: 0, float: 1, str: 2, bytes: 3}
 BYTE_TO_DATATYPE = {0: int, 1: float, 2: str, 3: bytes}
 
 TYPE_OF_PAGE_STRUCT = struct.Struct("<b")
-INTERNAL_NODE = 0
-LEAF_NODE = 1
-
 
 class NodeType(Enum):
     INTERNAL = 0
