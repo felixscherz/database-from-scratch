@@ -19,11 +19,11 @@ class DecodeError(Exception):
         super().__init__(f"Invalid bytes encountered at {offset=}")
 
 
-MAGIC_BYTES = tuple(c.encode() for c in "magic")
+MAGIC_BYTES = b"magic"
 VERSION_BYTES = (0, 0, 1)
 BYTES_PER_PAGE = 2**12  # 4096
 
-FILE_HEADER_MAGIC = struct.Struct("<5c3x")
+FILE_HEADER_MAGIC = struct.Struct("<5s3x")
 VERSION_BYTES_STRUCT = struct.Struct("<3i")
 BYTES_PER_PAGE_STRUCT = struct.Struct("<I")
 NUMBER_OF_PAGES_STRUCT = struct.Struct("<Q")
@@ -54,14 +54,14 @@ class MetaHeader:
     number_of_pages: int
     schema: dict[str, type[Datatype]]
     primary_key: tuple[str, ...]
-    magic: tuple[bytes, ...] = field(default=MAGIC_BYTES)
+    magic: bytes = field(default=MAGIC_BYTES)
     version: tuple[int, int, int] = field(default=VERSION_BYTES)
     bytes_per_page: int = field(default=BYTES_PER_PAGE)
 
     def write(self, writer: BinaryIO) -> int:
         key_mapping = {name: i for i, name in enumerate(self.primary_key)}
         start = writer.tell()
-        writer.write(FILE_HEADER_MAGIC.pack(*self.magic))
+        writer.write(FILE_HEADER_MAGIC.pack(self.magic))
         writer.write(VERSION_BYTES_STRUCT.pack(*self.version))
         writer.write(BYTES_PER_PAGE_STRUCT.pack(self.bytes_per_page))
         writer.write(NUMBER_OF_PAGES_STRUCT.pack(self.number_of_pages))
@@ -79,7 +79,7 @@ class MetaHeader:
 
     @classmethod
     def read(cls, reader: BinaryIO) -> MetaHeader:
-        if not read_with(reader, FILE_HEADER_MAGIC) == MAGIC_BYTES:
+        if not read_with(reader, FILE_HEADER_MAGIC)[0] == MAGIC_BYTES:
             raise DecodeError(0)
         version = read_with(reader, VERSION_BYTES_STRUCT)
         bytes_per_page = read_with(reader, BYTES_PER_PAGE_STRUCT)[0]
