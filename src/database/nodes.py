@@ -9,6 +9,7 @@ from typing import BinaryIO
 from typing import ClassVar
 from typing import Literal
 
+from database.constants import BYTES_PER_PAGE, MAGIC, VERSION
 from database.types import Datatype
 
 __all__ = ["InternalNode", "MetaHeader", "LeafNode"]
@@ -17,11 +18,6 @@ __all__ = ["InternalNode", "MetaHeader", "LeafNode"]
 class DecodeError(Exception):
     def __init__(self, offset: int):
         super().__init__(f"Invalid bytes encountered at {offset=}")
-
-
-MAGIC_BYTES = b"magic"
-VERSION_BYTES = (0, 0, 1)
-BYTES_PER_PAGE = 2**12  # 4096
 
 FILE_HEADER_MAGIC = struct.Struct("<5s3x")
 VERSION_BYTES_STRUCT = struct.Struct("<3i")
@@ -54,8 +50,8 @@ class MetaHeader:
     number_of_pages: int
     schema: dict[str, type[Datatype]]
     primary_key: tuple[str, ...]
-    magic: bytes = field(default=MAGIC_BYTES)
-    version: tuple[int, int, int] = field(default=VERSION_BYTES)
+    magic: bytes = field(default=MAGIC)
+    version: tuple[int, int, int] = field(default=VERSION)
     bytes_per_page: int = field(default=BYTES_PER_PAGE)
 
     def write(self, writer: BinaryIO) -> int:
@@ -79,7 +75,7 @@ class MetaHeader:
 
     @classmethod
     def read(cls, reader: BinaryIO) -> MetaHeader:
-        if not read_with(reader, FILE_HEADER_MAGIC)[0] == MAGIC_BYTES:
+        if not read_with(reader, FILE_HEADER_MAGIC)[0] == MAGIC:
             raise DecodeError(0)
         version = read_with(reader, VERSION_BYTES_STRUCT)
         bytes_per_page = read_with(reader, BYTES_PER_PAGE_STRUCT)[0]
