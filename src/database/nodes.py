@@ -74,8 +74,8 @@ class MetaHeader:
     def read(cls, reader: BinaryIO) -> MetaHeader:
         if not read_with(reader, FILE_HEADER_MAGIC)[0] == MAGIC:
             raise DecodeError(0)
-        version = read_with(reader, VERSION_BYTES_STRUCT)
-        bytes_per_page = read_with(reader, BYTES_PER_PAGE_STRUCT)[0]
+        _version = read_with(reader, VERSION_BYTES_STRUCT)
+        _bytes_per_page = read_with(reader, BYTES_PER_PAGE_STRUCT)[0]
         number_of_pages = read_with(reader, NUMBER_OF_PAGES_STRUCT)[0]
         number_of_columns = read_with(reader, NUMBER_OF_COLUMNS_STRUCT)[0]
         schema = {}
