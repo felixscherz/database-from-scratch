@@ -9,7 +9,9 @@ from typing import BinaryIO
 from typing import ClassVar
 from typing import Literal
 
-from database.constants import BYTES_PER_PAGE, MAGIC, VERSION
+from database.constants import BYTES_PER_PAGE
+from database.constants import MAGIC
+from database.constants import VERSION
 from database.types import Datatype
 
 __all__ = ["InternalNode", "MetaHeader", "LeafNode"]
@@ -18,6 +20,7 @@ __all__ = ["InternalNode", "MetaHeader", "LeafNode"]
 class DecodeError(Exception):
     def __init__(self, offset: int):
         super().__init__(f"Invalid bytes encountered at {offset=}")
+
 
 FILE_HEADER_MAGIC = struct.Struct("<5s3x")
 VERSION_BYTES_STRUCT = struct.Struct("<3i")
@@ -32,6 +35,7 @@ DATATYPE_TO_BYTE = {int: 0, float: 1, str: 2, bytes: 3}
 BYTE_TO_DATATYPE = {0: int, 1: float, 2: str, 3: bytes}
 
 TYPE_OF_PAGE_STRUCT = struct.Struct("<b")
+
 
 class NodeType(Enum):
     INTERNAL = 0
@@ -209,7 +213,68 @@ class InternalNode:
         return cls(key_mapping=key_mapping, meta_header=meta_header)
 
 
+@dataclass
 class LeafNode:
-    header: None
+    items: dict[Datatype, tuple[Datatype, ...]]
+    type: Literal[NodeType.LEAF] = NodeType.LEAF
+    meta_header: MetaHeader | None = None
+    type_of_page_struct: ClassVar[struct.Struct] = TYPE_OF_PAGE_STRUCT
+    number_of_items_struct: ClassVar[struct.Struct] = struct.Struct("<I")
+    free_space_struct: ClassVar[struct.Struct] = struct.Struct("<I")
+    offset_to_end_struct: ClassVar[struct.Struct] = struct.Struct("<I")
+    offset_to_free_struct: ClassVar[struct.Struct] = struct.Struct("<I")
+    bytes_per_page: ClassVar[int] = BYTES_PER_PAGE
 
-    ...
+    @property
+    def number_of_items(self) -> int:
+        return len(self.items)
+
+    @property
+    def offset_to_end(self) -> int:
+        return self.bytes_per_page
+
+    def write(self, writer: BinaryIO) -> int:
+        start = writer.tell()
+        if self.meta_header:
+            self.meta_header.write(writer)
+        writer.write(self.type_of_page_struct.pack(self.type.value))
+        writer.write(self.number_of_items_struct.pack(self.number_of_items))  # number of items on the page
+        writer.write(
+            self.free_space_struct.pack(self.free_space)
+        )  # free space left on the page after accounting for other headers
+        writer.write(self.offset_to_end_struct.pack(self.offset_to_end))  # point to end of the first page
+        writer.write(self.offset_to_free_struct.pack(self.offset_to_free))  # point to start of free space
+        writer.write(self._encode_items())
+        return writer.tell() - start
+
+    def _encode_items(self) -> bytes:
+        # this encodes the rest of the page
+        # <-- key-to-item-offset mapping -->
+        # <-- free space -->
+        # <-- items-in-reverse-insertion-order -->
+        mapping_buffer = BytesIO()
+        items_buffer = BytesIO()
+        key_offset_mapping = {}
+        for key, item in self.items.items():
+            # write item at the end of items_buffer
+            # insert key with offset to the key_offset_mapping dict
+
+            ...
+
+        # sort the key_offset_mapping before writing it to disk
+
+
+        for value, offset in self.items.items():
+            mapping_buffer.write(DATATYPE_STRUCT.pack(DATATYPE_TO_BYTE[type(value)]))
+            match type(value):
+                case int():
+                    mapping_buffer.write(struct.pack("<i", value))
+                case float():
+                    mapping_buffer.write(struct.pack("<f", value))
+                case str(), bytes():
+                    assert isinstance(value, (str, bytes))
+                    mapping_buffer.write(struct.pack("<I", len(value)))
+                    mapping_buffer.write(struct.pack(f"<{len(value)}s", value))
+            mapping_buffer.write(struct.pack("<I", offset))
+        return mapping_buffer.getvalue()
+
