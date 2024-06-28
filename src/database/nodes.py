@@ -255,26 +255,35 @@ class LeafNode:
         mapping_buffer = BytesIO()
         items_buffer = BytesIO()
         key_offset_mapping = {}
-        for key, item in self.items.items():
-            # write item at the end of items_buffer
-            # insert key with offset to the key_offset_mapping dict
+        for key in sorted(self.items.keys()):
+            # we know the datatype when reading, so we don't need to write it
+            match type(key):
+                case int():
+                    mapping_buffer.write(struct.pack("<i", key))
+                case float():
+                    mapping_buffer.write(struct.pack("<f", key))
+                case str(), bytes():
+                    assert isinstance(key, (str, bytes))
+                    mapping_buffer.write(struct.pack("<I", len(key)))
+                    mapping_buffer.write(struct.pack(f"<{len(key)}s", key))
+
+            # offset within the page
+            mapping_buffer.write(struct.pack("<I", self.items[key]))
 
             ...
 
         # sort the key_offset_mapping before writing it to disk
 
-
-        for value, offset in self.items.items():
-            mapping_buffer.write(DATATYPE_STRUCT.pack(DATATYPE_TO_BYTE[type(value)]))
-            match type(value):
+        for key, offset in self.items.items():
+            mapping_buffer.write(DATATYPE_STRUCT.pack(DATATYPE_TO_BYTE[type(key)]))
+            match type(key):
                 case int():
-                    mapping_buffer.write(struct.pack("<i", value))
+                    mapping_buffer.write(struct.pack("<i", key))
                 case float():
-                    mapping_buffer.write(struct.pack("<f", value))
+                    mapping_buffer.write(struct.pack("<f", key))
                 case str(), bytes():
-                    assert isinstance(value, (str, bytes))
-                    mapping_buffer.write(struct.pack("<I", len(value)))
-                    mapping_buffer.write(struct.pack(f"<{len(value)}s", value))
+                    assert isinstance(key, (str, bytes))
+                    mapping_buffer.write(struct.pack("<I", len(key)))
+                    mapping_buffer.write(struct.pack(f"<{len(key)}s", key))
             mapping_buffer.write(struct.pack("<I", offset))
         return mapping_buffer.getvalue()
-
